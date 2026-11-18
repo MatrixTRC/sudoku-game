@@ -86,6 +86,7 @@
     #notes-toggle { background: white; color: #174eaf; }
     #notes-toggle[aria-pressed="true"] { background: #174eaf; color: white; }
     button:hover { filter: brightness(0.92); }
+    button:disabled { cursor: not-allowed; filter: none; opacity: 0.55; }
     button:focus-visible { outline: 3px solid #17243b; outline-offset: 3px; }
     #status { min-height: 3em; margin: 16px 0 0; font-weight: 600; }
   </style>
@@ -93,10 +94,11 @@
 <body>
   <main>
     <h1>Sudoku</h1>
-    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it. Turn Notes on to toggle possible digits in empty cells; turn it off to enter an answer. Select an answer or starting number to highlight matching numbers. Select an empty cell to clear highlights; pencil notes do not count as answers.</p>
+    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it. Turn Notes on to toggle possible digits in empty cells; turn it off to enter an answer. Use Undo to reverse the latest answer or pencil-note change. Select an answer or starting number to highlight matching numbers. Select an empty cell to clear highlights; pencil notes do not count as answers.</p>
     <div id="board" role="group" aria-label="Sudoku board" aria-describedby="instructions"></div>
     <div class="controls">
       <button id="notes-toggle" type="button" aria-pressed="false">Notes: Off</button>
+      <button id="undo" type="button" disabled>Undo</button>
       <button id="check" type="button">Check Solution</button>
       <button id="reset" type="button">Reset</button>
     </div>
@@ -129,8 +131,10 @@
     const board = document.getElementById("board");
     const status = document.getElementById("status");
     const notesToggle = document.getElementById("notes-toggle");
+    const undoButton = document.getElementById("undo");
     let notesMode = false;
     let selectedCell = null;
+    const undoHistory = [];
     const answers = Array.from(puzzle, (digit) => digit === "0" ? "" : digit);
     const notes = Array.from(puzzle, () => new Set());
     const noteDisplays = [];
@@ -196,6 +200,23 @@
       }
     }
 
+    function recordUndo(index, answer, previousNotes) {
+      undoHistory.push({ index, answer, notes: previousNotes });
+      undoButton.disabled = false;
+    }
+
+    undoButton.addEventListener("click", () => {
+      const previousState = undoHistory.pop();
+      if (!previousState) return;
+      answers[previousState.index] = previousState.answer;
+      cells[previousState.index].value = previousState.answer;
+      notes[previousState.index] = new Set(previousState.notes);
+      renderNotes(previousState.index);
+      updateHighlights();
+      status.textContent = "";
+      undoButton.disabled = undoHistory.length === 0;
+    });
+
     notesToggle.addEventListener("click", () => {
       notesMode = !notesMode;
       notesToggle.setAttribute("aria-pressed", String(notesMode));
@@ -209,8 +230,11 @@
       if (notesMode && answers[index] === "" &&
           (event.key === "Backspace" || event.key === "Delete")) {
         event.preventDefault();
-        notes[index].clear();
-        renderNotes(index);
+        if (notes[index].size) {
+          recordUndo(index, answers[index], new Set(notes[index]));
+          notes[index].clear();
+          renderNotes(index);
+        }
         status.textContent = "";
       }
     });
@@ -220,6 +244,8 @@
       if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
       const index = Number(cell.dataset.index);
       const digit = cell.value.replace(/[^1-9]/g, "").slice(0, 1);
+      const previousAnswer = answers[index];
+      const previousNotes = new Set(notes[index]);
       if (notesMode) {
         cell.value = answers[index];
         if (answers[index] !== "") return;
@@ -233,6 +259,11 @@
         cell.value = digit;
         answers[index] = digit;
         notes[index].clear();
+      }
+      const notesChanged = previousNotes.size !== notes[index].size ||
+        Array.from(previousNotes).some((note) => !notes[index].has(note));
+      if (previousAnswer !== answers[index] || notesChanged) {
+        recordUndo(index, previousAnswer, previousNotes);
       }
       renderNotes(index);
       updateHighlights();
@@ -251,6 +282,8 @@
 
     document.getElementById("reset").addEventListener("click", () => {
       if (!window.confirm("Reset the puzzle? Your entries and notes will be cleared.")) return;
+      undoHistory.length = 0;
+      undoButton.disabled = true;
       cells.forEach((cell, index) => {
         answers[index] = puzzle[index] === "0" ? "" : puzzle[index];
         cell.value = answers[index];
