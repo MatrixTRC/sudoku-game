@@ -8,10 +8,15 @@ server, or internet connection is needed.
 
 - Fill white cells with digits 1-9. Shaded starting numbers are locked.
 - Use Tab to move between editable cells and Backspace or Delete to clear a cell.
+- Toggle **Notes: On** to record possible digits in empty white cells. Type 1-9
+  to add or remove a candidate; Backspace or Delete clears the cell's notes.
+  Filled cells and starting numbers stay unchanged in notes mode.
+- Toggle **Notes: Off** to enter final answers. Entering an answer clears that
+  cell's notes. Notes alone do not count as an answer when checking the solution.
 - **Check Solution** reports **incomplete** if any cell is empty, even if other
   entries are wrong. A full board is reported as **incorrect** or **solved**.
-- **Reset** asks for confirmation before clearing your entries and feedback,
-  restoring the fixed puzzle. Cancel keeps your entries and feedback unchanged.
+- **Reset** asks for confirmation before clearing your entries, notes, and
+  feedback, restoring the fixed puzzle. Cancel keeps them unchanged.
 
 Each row, column, and 3-by-3 box must contain the digits 1-9 without repeats.
 

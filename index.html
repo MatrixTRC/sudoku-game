@@ -23,14 +23,19 @@
       border: 3px solid #273952;
       background: white;
     }
-    .cell {
-      width: 100%;
+    .cell-slot {
+      position: relative;
       min-width: 0;
       aspect-ratio: 1;
-      padding: 0;
-      border: 0;
       border-right: 1px solid #b5c0d0;
       border-bottom: 1px solid #b5c0d0;
+    }
+    .cell {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      padding: 0;
+      border: 0;
       border-radius: 0;
       background: white;
       color: #174eaf;
@@ -43,16 +48,28 @@
       color: #17243b;
       font-weight: 750;
     }
-    .cell.box-right { border-right: 3px solid #273952; }
-    .cell.box-bottom { border-bottom: 3px solid #273952; }
-    .cell:nth-child(9n) { border-right: 0; }
-    .cell:nth-child(n+73) { border-bottom: 0; }
+    .cell-slot.box-right { border-right: 3px solid #273952; }
+    .cell-slot.box-bottom { border-bottom: 3px solid #273952; }
+    .cell-slot:nth-child(9n) { border-right: 0; }
+    .cell-slot:nth-child(n+73) { border-bottom: 0; }
     .cell:focus {
       position: relative;
       outline: 3px solid #215bc0;
       outline-offset: -3px;
       background: #edf4ff;
     }
+    .pencil-notes {
+      position: absolute;
+      inset: 3px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(3, minmax(0, 1fr));
+      pointer-events: none;
+      color: #435673;
+      font: 500 clamp(9px, 2.5vw, 13px) system-ui, sans-serif;
+      text-align: center;
+    }
+    .pencil-notes span { display: grid; place-items: center; }
     .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
     button {
       min-height: 44px;
@@ -65,6 +82,8 @@
       cursor: pointer;
     }
     #reset { background: white; color: #174eaf; }
+    #notes-toggle { background: white; color: #174eaf; }
+    #notes-toggle[aria-pressed="true"] { background: #174eaf; color: white; }
     button:hover { filter: brightness(0.92); }
     button:focus-visible { outline: 3px solid #17243b; outline-offset: 3px; }
     #status { min-height: 3em; margin: 16px 0 0; font-weight: 600; }
@@ -73,9 +92,10 @@
 <body>
   <main>
     <h1>Sudoku</h1>
-    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it.</p>
+    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it. Turn Notes on to toggle possible digits in empty cells; turn it off to enter an answer.</p>
     <div id="board" role="group" aria-label="Sudoku board" aria-describedby="instructions"></div>
     <div class="controls">
+      <button id="notes-toggle" type="button" aria-pressed="false">Notes: Off</button>
       <button id="check" type="button">Check Solution</button>
       <button id="reset" type="button">Reset</button>
     </div>
@@ -107,7 +127,14 @@
     ].join("");
     const board = document.getElementById("board");
     const status = document.getElementById("status");
+    const notesToggle = document.getElementById("notes-toggle");
+    let notesMode = false;
+    const answers = Array.from(puzzle, (digit) => digit === "0" ? "" : digit);
+    const notes = Array.from(puzzle, () => new Set());
+    const noteDisplays = [];
     const cells = Array.from(puzzle, (digit, index) => {
+      const slot = document.createElement("div");
+      slot.className = "cell-slot";
       const cell = document.createElement("input");
       const row = Math.floor(index / 9);
       const column = index % 9;
@@ -118,21 +145,78 @@
       cell.autocomplete = "off";
       cell.spellcheck = false;
       cell.className = "cell";
+      cell.dataset.index = index;
       cell.readOnly = digit !== "0";
       cell.value = cell.readOnly ? digit : "";
       cell.setAttribute("aria-label",
         `Row ${row + 1}, column ${column + 1}${cell.readOnly ? `, starting number ${digit}` : ""}`);
       if (cell.readOnly) cell.tabIndex = -1;
-      if (column === 2 || column === 5) cell.classList.add("box-right");
-      if (row === 2 || row === 5) cell.classList.add("box-bottom");
-      board.appendChild(cell);
+      if (column === 2 || column === 5) slot.classList.add("box-right");
+      if (row === 2 || row === 5) slot.classList.add("box-bottom");
+      const display = document.createElement("div");
+      display.className = "pencil-notes";
+      display.setAttribute("aria-hidden", "true");
+      for (let candidate = 1; candidate <= 9; candidate++) {
+        display.appendChild(document.createElement("span"));
+      }
+      noteDisplays.push(display);
+      slot.append(cell, display);
+      board.appendChild(slot);
       return cell;
+    });
+
+    function renderNotes(index) {
+      Array.from(noteDisplays[index].children).forEach((item, position) => {
+        const digit = String(position + 1);
+        item.textContent = notes[index].has(digit) ? digit : "";
+      });
+      if (notes[index].size) {
+        cells[index].setAttribute("aria-description",
+          `Pencil notes: ${Array.from(notes[index]).sort().join(", ")}`);
+      } else {
+        cells[index].removeAttribute("aria-description");
+      }
+    }
+
+    notesToggle.addEventListener("click", () => {
+      notesMode = !notesMode;
+      notesToggle.setAttribute("aria-pressed", String(notesMode));
+      notesToggle.textContent = notesMode ? "Notes: On" : "Notes: Off";
+    });
+
+    board.addEventListener("keydown", (event) => {
+      const cell = event.target;
+      if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
+      const index = Number(cell.dataset.index);
+      if (notesMode && answers[index] === "" &&
+          (event.key === "Backspace" || event.key === "Delete")) {
+        event.preventDefault();
+        notes[index].clear();
+        renderNotes(index);
+        status.textContent = "";
+      }
     });
 
     board.addEventListener("input", (event) => {
       const cell = event.target;
       if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
-      cell.value = cell.value.replace(/[^1-9]/g, "").slice(0, 1);
+      const index = Number(cell.dataset.index);
+      const digit = cell.value.replace(/[^1-9]/g, "").slice(0, 1);
+      if (notesMode) {
+        cell.value = answers[index];
+        if (answers[index] !== "") return;
+        if (event.inputType.startsWith("delete")) {
+          notes[index].clear();
+        } else if (digit) {
+          if (notes[index].has(digit)) notes[index].delete(digit);
+          else notes[index].add(digit);
+        }
+      } else {
+        cell.value = digit;
+        answers[index] = digit;
+        notes[index].clear();
+      }
+      renderNotes(index);
       status.textContent = "";
     });
 
@@ -147,9 +231,12 @@
     });
 
     document.getElementById("reset").addEventListener("click", () => {
-      if (!window.confirm("Reset the puzzle? Your entries will be cleared.")) return;
+      if (!window.confirm("Reset the puzzle? Your entries and notes will be cleared.")) return;
       cells.forEach((cell, index) => {
-        cell.value = puzzle[index] === "0" ? "" : puzzle[index];
+        answers[index] = puzzle[index] === "0" ? "" : puzzle[index];
+        cell.value = answers[index];
+        notes[index].clear();
+        renderNotes(index);
       });
       status.textContent = "";
     });
