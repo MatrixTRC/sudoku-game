@@ -10,6 +10,7 @@ server, or internet connection is needed.
 - Use Tab to move between editable cells and Backspace or Delete to clear a cell.
 - **Check Solution** reports **incomplete** if any cell is empty, even if other
   entries are wrong. A full board is reported as **incorrect** or **solved**.
-- **Reset** immediately clears your entries and feedback, restoring the fixed puzzle.
+- **Reset** asks for confirmation before clearing your entries and feedback,
+  restoring the fixed puzzle. Cancel keeps your entries and feedback unchanged.
 
 Each row, column, and 3-by-3 box must contain the digits 1-9 without repeats.
