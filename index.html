@@ -58,6 +58,7 @@
       outline-offset: -3px;
       background: #edf4ff;
     }
+    .cell.matching-number { background: #fff1b8; }
     .pencil-notes {
       position: absolute;
       inset: 3px;
@@ -92,7 +93,7 @@
 <body>
   <main>
     <h1>Sudoku</h1>
-    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it. Turn Notes on to toggle possible digits in empty cells; turn it off to enter an answer.</p>
+    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it. Turn Notes on to toggle possible digits in empty cells; turn it off to enter an answer. Select an answer or starting number to highlight matching numbers. Select an empty cell to clear highlights; pencil notes do not count as answers.</p>
     <div id="board" role="group" aria-label="Sudoku board" aria-describedby="instructions"></div>
     <div class="controls">
       <button id="notes-toggle" type="button" aria-pressed="false">Notes: Off</button>
@@ -129,6 +130,7 @@
     const status = document.getElementById("status");
     const notesToggle = document.getElementById("notes-toggle");
     let notesMode = false;
+    let selectedCell = null;
     const answers = Array.from(puzzle, (digit) => digit === "0" ? "" : digit);
     const notes = Array.from(puzzle, () => new Set());
     const noteDisplays = [];
@@ -164,6 +166,22 @@
       board.appendChild(slot);
       return cell;
     });
+
+    function updateHighlights() {
+      const digit = selectedCell ? answers[Number(selectedCell.dataset.index)] : "";
+      cells.forEach((cell, index) => {
+        cell.classList.toggle("matching-number", digit !== "" && answers[index] === digit);
+      });
+    }
+
+    function selectCell(event) {
+      if (!(event.target instanceof HTMLInputElement)) return;
+      selectedCell = event.target;
+      updateHighlights();
+    }
+
+    board.addEventListener("focusin", selectCell);
+    board.addEventListener("click", selectCell);
 
     function renderNotes(index) {
       Array.from(noteDisplays[index].children).forEach((item, position) => {
@@ -217,6 +235,7 @@
         notes[index].clear();
       }
       renderNotes(index);
+      updateHighlights();
       status.textContent = "";
     });
 
@@ -238,6 +257,8 @@
         notes[index].clear();
         renderNotes(index);
       });
+      selectedCell = null;
+      updateHighlights();
       status.textContent = "";
     });
   </script>

@@ -37,6 +37,13 @@ function readBoard(page) {
   );
 }
 
+async function expectHighlights(page, indexes) {
+  const highlighted = page.locator('.matching-number');
+  await expect(highlighted).toHaveCount(indexes.length);
+  expect(await highlighted.evaluateAll(cells => cells.map(cell => Number(cell.dataset.index))))
+    .toEqual(indexes);
+}
+
 async function fillSolution(page) {
   const cells = page.getByRole('textbox');
   for (let index = 0; index < puzzle.length; index++) {
@@ -75,6 +82,8 @@ test('confirming Reset clears entries and feedback but preserves locked clues', 
   await expect(notedCell).toHaveAccessibleDescription('Pencil notes: 2, 8');
   await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Incomplete:');
+  await page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true }).click();
+  await expectHighlights(page, [0, 14, 71]);
 
   const dialogPromise = page.waitForEvent('dialog');
   const clickPromise = page.getByRole('button', { name: 'Reset', exact: true }).click();
@@ -86,6 +95,7 @@ test('confirming Reset clears entries and feedback but preserves locked clues', 
   expect(await readBoard(page)).toEqual(originalBoard);
   await expect(notedCell).toHaveAccessibleDescription('');
   await expect(page.locator('.pencil-notes')).toHaveText(Array(81).fill(''));
+  await expectHighlights(page, []);
   await expect(page.getByRole('status')).toBeEmpty();
 });
 
@@ -99,6 +109,8 @@ test('canceling Reset preserves entries, feedback, and locked clues', async ({ p
   await expect(page.getByRole('status')).toContainText('Incomplete:');
   const before = await readBoard(page);
   const feedback = await page.getByRole('status').textContent();
+  await page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true }).click();
+  await expectHighlights(page, [0, 14, 71]);
 
   const dialogPromise = page.waitForEvent('dialog');
   const clickPromise = page.getByRole('button', { name: 'Reset', exact: true }).click();
@@ -110,6 +122,7 @@ test('canceling Reset preserves entries, feedback, and locked clues', async ({ p
   expect(await readBoard(page)).toEqual(before);
   await expect(notedCell).toHaveAccessibleDescription('Pencil notes: 2, 8');
   await expect(notedCell.locator('..').locator('.pencil-notes')).toHaveText('28');
+  await expectHighlights(page, [0, 14, 71]);
   await expect(page.getByRole('status')).toHaveText(feedback);
 });
 
@@ -212,6 +225,101 @@ test('notes in the last empty cell do not count as a solved answer', async ({ pa
   await cell.fill('4');
   await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('Solved!');
+});
+
+test('selecting starting numbers and answers highlights every matching final value', async ({ page }) => {
+  await expectHighlights(page, []);
+  const firstAnswer = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const secondAnswer = page.getByRole('textbox', { name: 'Row 1, column 4', exact: true });
+  await firstAnswer.fill('5');
+  await secondAnswer.fill('5');
+  const before = await readBoard(page);
+
+  const clue = page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true });
+  await clue.click();
+  await expectHighlights(page, [0, 2, 3, 14, 71]);
+  await expect(clue).not.toBeEditable();
+  await clue.press('9');
+  await clue.press('Backspace');
+  expect(await readBoard(page)).toEqual(before);
+  await expectHighlights(page, [0, 2, 3, 14, 71]);
+
+  await firstAnswer.click();
+  await expectHighlights(page, [0, 2, 3, 14, 71]);
+  await expect(firstAnswer).toBeFocused();
+  await expect(firstAnswer).toHaveCSS('outline-style', 'solid');
+  await expect(firstAnswer).toHaveCSS('outline-width', '3px');
+  const background = await firstAnswer.evaluate(cell => getComputedStyle(cell).backgroundColor);
+  await expect(clue).toHaveCSS('background-color', background);
+
+  await page.getByRole('textbox', { name: 'Row 1, column 2, starting number 3', exact: true }).click();
+  await expectHighlights(page, [1, 35, 41]);
+  expect(await readBoard(page)).toEqual(before);
+});
+
+test('keyboard selection updates matches and empty or notes-only cells clear them', async ({ page }) => {
+  const firstAnswer = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const secondAnswer = page.getByRole('textbox', { name: 'Row 1, column 4', exact: true });
+  const notedCell = page.getByRole('textbox', { name: 'Row 1, column 6', exact: true });
+  await firstAnswer.fill('5');
+  await secondAnswer.fill('3');
+  await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+  await notedCell.pressSequentially('53');
+  await page.getByRole('button', { name: 'Notes: On', exact: true }).click();
+  const before = await readBoard(page);
+
+  const clue = page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true });
+  await clue.click();
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await notedCell.click();
+  await expectHighlights(page, []);
+  await clue.click();
+  await clue.press('Tab');
+  await expect(firstAnswer).toBeFocused();
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await firstAnswer.press('Tab');
+  await expect(secondAnswer).toBeFocused();
+  await expectHighlights(page, [1, 3, 35, 41]);
+  await secondAnswer.press('Tab');
+  await expect(notedCell).toBeFocused();
+  await expectHighlights(page, []);
+  await expect(notedCell).toHaveAccessibleDescription('Pencil notes: 3, 5');
+  await notedCell.press('Shift+Tab');
+  await expectHighlights(page, [1, 3, 35, 41]);
+  await page.getByRole('textbox', { name: 'Row 1, column 7', exact: true }).click();
+  await expectHighlights(page, []);
+  expect(await readBoard(page)).toEqual(before);
+});
+
+test('entering, changing, and clearing the selected answer updates highlights', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  await cell.click();
+  await expectHighlights(page, []);
+  await cell.fill('5');
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await cell.fill('3');
+  await expectHighlights(page, [1, 2, 35, 41]);
+  await cell.press('Backspace');
+  await expectHighlights(page, []);
+  await cell.fill('5');
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await cell.press('Home');
+  await cell.press('Delete');
+  await expectHighlights(page, []);
+});
+
+test.describe('touch selection', () => {
+  test.use({ hasTouch: true, viewport: { width: 375, height: 800 } });
+
+  test('tapping starting numbers highlights matches and tapping an empty cell clears them', async ({ page }) => {
+    await page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true }).tap();
+    await expectHighlights(page, [0, 14, 71]);
+    await page.getByRole('textbox', { name: 'Row 1, column 2, starting number 3', exact: true }).tap();
+    await expectHighlights(page, [1, 35, 41]);
+    await page.getByRole('textbox', { name: 'Row 1, column 3', exact: true }).tap();
+    await expectHighlights(page, []);
+    expect(await readBoard(page)).toEqual(originalBoard);
+  });
 });
 
 for (const width of [375, 1280]) {
