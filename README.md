@@ -35,4 +35,4 @@ The Playwright suite opens the HTML file directly in Chromium, without a server.
 It covers locked starting numbers, confirming and canceling Reset, and
 incomplete (including partially incorrect boards), incorrect, and solved results.
 
-GitHub Actions runs the same tests on every push and pull request.
+GitHub Actions runs the same tests on every pull request.
