@@ -413,6 +413,71 @@ test.describe('touch selection', () => {
   });
 });
 
+test('cell and enabled button boundaries have sufficient contrast', async ({ page }) => {
+  await page.getByRole('textbox', { name: 'Row 1, column 3', exact: true }).fill('4');
+  for (const notesMode of [false, true]) {
+    if (notesMode) await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+    await page.mouse.move(0, 0);
+    const boundaries = await page.evaluate(() => {
+      function luminance(color) {
+        const [red, green, blue] = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
+          const channel = value / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return red * 0.2126 + green * 0.7152 + blue * 0.0722;
+      }
+      function contrast(first, second) {
+        const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
+        return (lighter + 0.05) / (darker + 0.05);
+      }
+      function background(element) {
+        const color = getComputedStyle(element).backgroundColor;
+        return color === 'rgba(0, 0, 0, 0)' ? background(element.parentElement) : color;
+      }
+      const cells = Array.from(document.querySelectorAll('.cell-slot')).filter(slot =>
+        parseFloat(getComputedStyle(slot).borderRightWidth) > 0
+      ).map(slot => ({
+        name: slot.querySelector('input').getAttribute('aria-label'),
+        ratio: contrast(getComputedStyle(slot).borderRightColor, background(slot.querySelector('input'))),
+      }));
+      const buttons = Array.from(document.querySelectorAll('button:not(:disabled)')).map(button => {
+        const style = getComputedStyle(button);
+        const outside = background(button.parentElement);
+        return {
+          name: button.textContent,
+          ratio: Math.max(contrast(style.borderColor, outside), contrast(style.backgroundColor, outside)),
+        };
+      });
+      return [...cells, ...buttons];
+    });
+    for (const boundary of boundaries) {
+      expect(boundary.ratio, boundary.name).toBeGreaterThanOrEqual(3);
+    }
+  }
+});
+
+for (const width of [320, 481, 768, 801, 1280]) {
+  test(`layout fits a ${width}px viewport with usable puzzle controls`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    const board = await page.getByRole('group', { name: 'Sudoku board', exact: true }).boundingBox();
+    expect(Math.abs(board.width - board.height)).toBeLessThan(1);
+    for (const button of await page.getByRole('button').all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      expect(bounds.y).toBeGreaterThanOrEqual(board.y + board.height);
+      const labelLines = await button.evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getClientRects().length;
+      });
+      expect(labelLines).toBe(1);
+    }
+  });
+}
+
 for (const width of [375, 1280]) {
   test(`notes fit within cells at a ${width}px viewport without blocking input`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
