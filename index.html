@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sudoku</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 12px;
+      background: #f3f5fa;
+      color: #17243b;
+      font-family: system-ui, sans-serif;
+    }
+    main { max-width: 480px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; }
+    p { line-height: 1.5; }
+    #instructions { margin: 0 0 24px; }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      border: 3px solid #273952;
+      background: white;
+    }
+    .cell {
+      width: 100%;
+      min-width: 0;
+      aspect-ratio: 1;
+      padding: 0;
+      border: 0;
+      border-right: 1px solid #b5c0d0;
+      border-bottom: 1px solid #b5c0d0;
+      border-radius: 0;
+      background: white;
+      color: #174eaf;
+      font: 500 clamp(18px, 5vw, 28px) system-ui, sans-serif;
+      text-align: center;
+      appearance: none;
+    }
+    .cell[readonly] {
+      background: #e8edf5;
+      color: #17243b;
+      font-weight: 750;
+    }
+    .cell.box-right { border-right: 3px solid #273952; }
+    .cell.box-bottom { border-bottom: 3px solid #273952; }
+    .cell:nth-child(9n) { border-right: 0; }
+    .cell:nth-child(n+73) { border-bottom: 0; }
+    .cell:focus {
+      position: relative;
+      outline: 3px solid #215bc0;
+      outline-offset: -3px;
+      background: #edf4ff;
+    }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+    button {
+      min-height: 44px;
+      padding: 10px 18px;
+      border: 1px solid #174eaf;
+      border-radius: 8px;
+      background: #174eaf;
+      color: white;
+      font: 600 16px system-ui, sans-serif;
+      cursor: pointer;
+    }
+    #reset { background: white; color: #174eaf; }
+    button:hover { filter: brightness(0.92); }
+    button:focus-visible { outline: 3px solid #17243b; outline-offset: 3px; }
+    #status { min-height: 3em; margin: 16px 0 0; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sudoku</h1>
+    <p id="instructions">Fill each row, column, and 3 &times; 3 box with the digits 1&ndash;9, without repeats. Shaded starting numbers are locked. Select a white cell to type; use Backspace or Delete to clear it.</p>
+    <div id="board" role="group" aria-label="Sudoku board" aria-describedby="instructions"></div>
+    <div class="controls">
+      <button id="check" type="button">Check Solution</button>
+      <button id="reset" type="button">Reset</button>
+    </div>
+    <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
+    <noscript><p>Enable JavaScript to play this Sudoku game.</p></noscript>
+  </main>
+  <script>
+    const puzzle = [
+      "530070000",
+      "600195000",
+      "098000060",
+      "800060003",
+      "400803001",
+      "700020006",
+      "060000280",
+      "000419005",
+      "000080079"
+    ].join("");
+    const solution = [
+      "534678912",
+      "672195348",
+      "198342567",
+      "859761423",
+      "426853791",
+      "713924856",
+      "961537284",
+      "287419635",
+      "345286179"
+    ].join("");
+    const board = document.getElementById("board");
+    const status = document.getElementById("status");
+    const cells = Array.from(puzzle, (digit, index) => {
+      const cell = document.createElement("input");
+      const row = Math.floor(index / 9);
+      const column = index % 9;
+      cell.type = "text";
+      cell.inputMode = "numeric";
+      cell.maxLength = 1;
+      cell.pattern = "[1-9]";
+      cell.autocomplete = "off";
+      cell.spellcheck = false;
+      cell.className = "cell";
+      cell.readOnly = digit !== "0";
+      cell.value = cell.readOnly ? digit : "";
+      cell.setAttribute("aria-label",
+        `Row ${row + 1}, column ${column + 1}${cell.readOnly ? `, starting number ${digit}` : ""}`);
+      if (cell.readOnly) cell.tabIndex = -1;
+      if (column === 2 || column === 5) cell.classList.add("box-right");
+      if (row === 2 || row === 5) cell.classList.add("box-bottom");
+      board.appendChild(cell);
+      return cell;
+    });
+
+    board.addEventListener("input", (event) => {
+      const cell = event.target;
+      if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
+      cell.value = cell.value.replace(/[^1-9]/g, "").slice(0, 1);
+      status.textContent = "";
+    });
+
+    document.getElementById("check").addEventListener("click", () => {
+      if (cells.some((cell) => cell.value === "")) {
+        status.textContent = "Incomplete: fill every empty cell before checking your solution.";
+      } else if (cells.every((cell, index) => cell.value === solution[index])) {
+        status.textContent = "Solved! Every number is correct. Well done!";
+      } else {
+        status.textContent = "Incorrect: the board contains mistakes. Keep trying!";
+      }
+    });
+
+    document.getElementById("reset").addEventListener("click", () => {
+      cells.forEach((cell, index) => {
+        cell.value = puzzle[index] === "0" ? "" : puzzle[index];
+      });
+      status.textContent = "";
+    });
+  </script>
+</body>
+</html>
