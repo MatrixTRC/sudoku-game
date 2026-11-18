@@ -147,6 +147,7 @@
     });
 
     document.getElementById("reset").addEventListener("click", () => {
+      if (!window.confirm("Reset the puzzle? Your entries will be cleared.")) return;
       cells.forEach((cell, index) => {
         cell.value = puzzle[index] === "0" ? "" : puzzle[index];
       });
