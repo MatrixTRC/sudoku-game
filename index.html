@@ -213,6 +213,33 @@
       border-radius: 9px;
       background: var(--surface-muted);
     }
+    .results-panel {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .results-panel p { color: var(--muted); }
+    #result-form { display: grid; gap: 8px; margin: 16px 0 24px; }
+    #result-form label { font-weight: 600; }
+    #nickname {
+      width: 100%;
+      min-width: 0;
+      min-height: 46px;
+      padding: 10px 12px;
+      border: 1px solid var(--grid-strong);
+      border-radius: 9px;
+      color: var(--ink);
+      background: var(--surface);
+      font: inherit;
+    }
+    #nickname:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    #result-form p { margin: 0; }
+    .results-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .results-heading h3 { margin: 0; font-size: 15px; }
+    #recent-results { margin-bottom: 0; padding-left: 24px; }
+    #recent-results li { padding: 8px 0; overflow-wrap: anywhere; }
+    #recent-results time, .result-puzzle { display: block; color: var(--muted); }
     .guide-panel { background: #fafbf9; }
     #instructions { margin: 12px 0 22px; color: var(--muted); font-size: 14px; }
     .guide-list { display: grid; gap: 20px; margin: 0; padding: 0; list-style: none; }
@@ -290,6 +317,25 @@
           <button id="reset" type="button">Reset</button>
         </div>
         <p id="status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <section class="results-panel" aria-labelledby="results-title">
+          <h2 id="results-title">Share your finish</h2>
+          <p>After solving, save your nickname to the public completions list.
+            Playing works offline; saving and loading results need internet access.</p>
+          <form id="result-form" novalidate>
+            <label for="nickname">Player nickname</label>
+            <input id="nickname" type="text" maxlength="40" autocomplete="off"
+              aria-describedby="nickname-help save-status">
+            <p id="nickname-help">Use 1&ndash;40 characters. Your nickname and completion time will be public.</p>
+            <button id="save-result" type="submit" disabled>Save Result</button>
+            <p id="save-status" aria-live="polite">Complete the puzzle, then save once per attempt.</p>
+          </form>
+          <div class="results-heading">
+            <h3 id="recent-title">Recent completions</h3>
+            <button id="refresh-results" type="button">Refresh results</button>
+          </div>
+          <p id="results-status" aria-live="polite">Loading recent completions...</p>
+          <ol id="recent-results" aria-labelledby="recent-title"></ol>
+        </section>
       </section>
       <aside class="guide-panel" aria-labelledby="guide-title">
         <h2 id="guide-title">How to play</h2>
@@ -345,6 +391,20 @@
     const notesToggle = document.getElementById("notes-toggle");
     const undoButton = document.getElementById("undo");
     const redoButton = document.getElementById("redo");
+    const resultForm = document.getElementById("result-form");
+    const nicknameInput = document.getElementById("nickname");
+    const saveButton = document.getElementById("save-result");
+    const saveStatus = document.getElementById("save-status");
+    const refreshButton = document.getElementById("refresh-results");
+    const resultsStatus = document.getElementById("results-status");
+    const recentResults = document.getElementById("recent-results");
+    const resultsUrl = "https://nduvjvkgnarzqzhjfiow.supabase.co/rest/v1/game_results";
+    const publishableKey = "sb_publishable_Bp6ZFP2GH2_w-cPWw6xJ3A_SkWdpzg6";
+    const puzzleId = "classic-1";
+    let attempt = { saved: false };
+    let saving = false;
+    let loadingResults = false;
+    let resultsLoadVersion = 0;
     let notesMode = false;
     let selectedCell = null;
     const undoHistory = [];
@@ -385,6 +445,121 @@
       return cell;
     });
 
+    function isSolved() {
+      return answers.every((answer, index) => answer === solution[index]);
+    }
+
+    function updateSaveButton() {
+      saveButton.disabled = saving || attempt.saved || !isSolved();
+      nicknameInput.disabled = saving || attempt.saved;
+    }
+
+    async function requestResults(query, options = {}) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(resultsUrl + query, {
+          ...options,
+          headers: { apikey: publishableKey, ...options.headers },
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          const error = new Error("Results request rejected");
+          error.rejected = response.status >= 400 && response.status < 500;
+          throw error;
+        }
+        return options.method === "POST" ? null : await response.json();
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    async function loadResults(force = false) {
+      if (loadingResults && !force) return;
+      const version = ++resultsLoadVersion;
+      loadingResults = true;
+      refreshButton.disabled = true;
+      resultsStatus.textContent = "Loading recent completions...";
+      try {
+        const results = await requestResults(
+          "?select=player_nickname,puzzle_id,completed_at&order=completed_at.desc,id.desc&limit=10"
+        );
+        if (version !== resultsLoadVersion) return;
+        if (!Array.isArray(results) || results.some(result =>
+          !result || typeof result.player_nickname !== "string" ||
+          typeof result.puzzle_id !== "string" || typeof result.completed_at !== "string" ||
+          !Number.isFinite(Date.parse(result.completed_at))
+        )) throw new Error("Invalid results response");
+        const items = results.slice(0, 10).map(result => {
+          const item = document.createElement("li");
+          const name = document.createElement("strong");
+          name.textContent = result.player_nickname;
+          const puzzleLabel = document.createElement("span");
+          puzzleLabel.className = "result-puzzle";
+          puzzleLabel.textContent = `Puzzle: ${result.puzzle_id}`;
+          const time = document.createElement("time");
+          time.dateTime = result.completed_at;
+          time.textContent = new Date(result.completed_at).toLocaleString();
+          item.append(name, puzzleLabel, time);
+          return item;
+        });
+        recentResults.replaceChildren(...items);
+        resultsStatus.textContent = items.length ? "Latest 10 completions, newest first." : "No completions yet.";
+      } catch {
+        if (version === resultsLoadVersion) {
+          resultsStatus.textContent = "Could not load completions. Check your connection and try Refresh results.";
+        }
+      } finally {
+        if (version === resultsLoadVersion) {
+          loadingResults = false;
+          refreshButton.disabled = false;
+        }
+      }
+    }
+
+    resultForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (saving || attempt.saved) return;
+      if (!isSolved()) {
+        saveStatus.textContent = "Solve the puzzle correctly before saving a result.";
+        return;
+      }
+      const nickname = nicknameInput.value.trim();
+      if (!nickname || Array.from(nickname).length > 40) {
+        saveStatus.textContent = "Enter a nickname with 1-40 nonblank characters.";
+        nicknameInput.focus();
+        return;
+      }
+      const submittedAttempt = attempt;
+      saving = true;
+      updateSaveButton();
+      saveStatus.textContent = "Saving result...";
+      try {
+        await requestResults("", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ player_nickname: nickname, puzzle_id: puzzleId })
+        });
+        submittedAttempt.saved = true;
+        if (attempt === submittedAttempt) {
+          saveStatus.textContent = "Result saved! Reset the puzzle to start another attempt.";
+        }
+        await loadResults(true);
+      } catch (error) {
+        if (attempt === submittedAttempt) {
+          saveStatus.textContent = error.rejected
+            ? "Could not save your result. Please try again."
+            : "Could not confirm your save. It may have reached the server. Refresh results before retrying.";
+        }
+      } finally {
+        saving = false;
+        updateSaveButton();
+      }
+    });
+
+    refreshButton.addEventListener("click", () => loadResults());
+    loadResults();
+
     function updateHighlights() {
       const digit = selectedCell ? answers[Number(selectedCell.dataset.index)] : "";
       cells.forEach((cell, index) => {
@@ -419,6 +594,7 @@
       redoHistory.length = 0;
       undoButton.disabled = false;
       redoButton.disabled = true;
+      updateSaveButton();
     }
 
     function restoreChange(source, destination) {
@@ -437,6 +613,7 @@
       status.textContent = "";
       undoButton.disabled = undoHistory.length === 0;
       redoButton.disabled = redoHistory.length === 0;
+      updateSaveButton();
     }
 
     undoButton.addEventListener("click", () => restoreChange(undoHistory, redoHistory));
@@ -549,6 +726,9 @@
       selectedCell = null;
       updateHighlights();
       status.textContent = "";
+      attempt = { saved: false };
+      saveStatus.textContent = "Complete the puzzle, then save once per attempt.";
+      updateSaveButton();
     });
   </script>
 </body>

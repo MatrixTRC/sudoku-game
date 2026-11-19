@@ -3,7 +3,8 @@
 ## Start playing
 
 Open [index.html](./index.html) in a browser with JavaScript enabled.
-No installation, server, or internet connection is needed.
+No installation or server is needed. You can play offline; saving and viewing
+shared results require internet access.
 
 Fill the 9-by-9 board so that every row, column, and 3-by-3 box contains
 the digits 1-9 without repeats.
@@ -75,6 +76,29 @@ Click **Check Solution** to see one of three results:
 
 You can keep editing after checking.
 
+## Save and view completions
+
+Once every answer is correct, **Save Result** becomes available. Enter a
+nickname of 1-40 characters, then click it to share your completion. Your
+nickname, puzzle identifier, and completion time will be public, so avoid
+personal information. The time records when the server saves your result,
+not how long you spent solving.
+
+**Recent completions** shows up to 10 results, newest first. Click
+**Refresh results** to load the latest entries or retry a failed load.
+Connection errors do not affect your answers, notes, or Undo/Redo history.
+
+While a save is pending, repeated clicks cannot submit another result.
+After a successful save, you cannot save the same attempt again, even if you
+Undo and Redo an answer. Confirmed Reset starts another attempt; reloading
+starts a new local session too.
+
+If saving fails, follow the message beside the button. A network interruption
+can leave the outcome uncertain: refresh the list before retrying because your
+result may already have been saved. A successful save remains saved even if
+loading the updated list fails. Resetting or closing the page cannot cancel a
+submission already sent to the server.
+
 ## Reset or start over
 
 Click **Reset** and confirm to restore the same starting puzzle. This clears
@@ -85,4 +109,4 @@ Canceling the confirmation keeps your game and history unchanged.
 A confirmed Reset cannot be undone.
 
 Progress is not saved between page loads. Reloading or reopening the page
-starts the puzzle again.
+starts the puzzle again. Results already shared remain in the public list.

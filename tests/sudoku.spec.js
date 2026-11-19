@@ -32,7 +32,7 @@ const originalBoard = Array.from(puzzle, digit => ({
 }));
 
 function readBoard(page) {
-  return page.getByRole('textbox').evaluateAll(cells =>
+  return page.locator('#board').getByRole('textbox').evaluateAll(cells =>
     cells.map(cell => ({ value: cell.value, readOnly: cell.readOnly }))
   );
 }
@@ -45,18 +45,22 @@ async function expectHighlights(page, indexes) {
 }
 
 async function fillSolution(page) {
-  const cells = page.getByRole('textbox');
+  const cells = page.locator('#board').getByRole('textbox');
   for (let index = 0; index < puzzle.length; index++) {
     if (puzzle[index] === '0') await cells.nth(index).fill(solution[index]);
   }
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.route('https://nduvjvkgnarzqzhjfiow.supabase.co/rest/v1/game_results*', route => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: [] });
+    return route.abort();
+  });
   await page.goto(pathToFileURL(path.resolve(__dirname, '..', 'index.html')).href);
 });
 
 test('starting numbers stay locked while blank cells are editable', async ({ page }) => {
-  await expect(page.getByRole('textbox')).toHaveCount(81);
+  await expect(page.locator('#board').getByRole('textbox')).toHaveCount(81);
   expect(await readBoard(page)).toEqual(originalBoard);
 
   const clue = page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true });
@@ -74,7 +78,7 @@ test('starting numbers stay locked while blank cells are editable', async ({ pag
 });
 
 test('arrow keys move to adjacent cells including locked starting numbers', async ({ page }) => {
-  const cells = page.getByRole('textbox');
+  const cells = page.locator('#board').getByRole('textbox');
   for (const [source, key, destination] of [
     [2, 'ArrowLeft', 1],
     [1, 'ArrowRight', 2],
@@ -94,7 +98,7 @@ test('arrow keys move to adjacent cells including locked starting numbers', asyn
 });
 
 test('arrow keys stop at every board edge without wrapping or leaving the board', async ({ page }) => {
-  const cells = page.getByRole('textbox');
+  const cells = page.locator('#board').getByRole('textbox');
   for (const [index, keys] of [
     [0, ['ArrowLeft', 'ArrowUp']],
     [8, ['ArrowRight', 'ArrowUp']],
@@ -116,7 +120,7 @@ test('arrow keys stop at every board edge without wrapping or leaving the board'
 });
 
 test('arrow navigation preserves notes, history, feedback, and clue locks while updating matches', async ({ page }) => {
-  const cells = page.getByRole('textbox');
+  const cells = page.locator('#board').getByRole('textbox');
   const answer = cells.nth(2);
   const notedCell = cells.nth(3);
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
@@ -817,3 +821,264 @@ for (const width of [375, 1280]) {
     await expect(page.getByRole('textbox', { name: 'Row 1, column 4', exact: true })).toBeFocused();
   });
 }
+
+test.describe('shared results', () => {
+  const endpoint = 'https://nduvjvkgnarzqzhjfiow.supabase.co/rest/v1/game_results*';
+  const completion = {
+    player_nickname: '<img src=x onerror=alert(1)>',
+    puzzle_id: 'classic-1',
+    completed_at: '2026-11-19T13:00:00Z',
+  };
+
+  test('loads the ten most recent completions and renders nicknames as text', async ({ page }) => {
+    let request;
+    await page.route(endpoint, route => {
+      request = route.request();
+      return route.fulfill({
+        json: Array.from({ length: 10 }, (_, index) => ({
+          ...completion,
+          player_nickname: index === 0 ? completion.player_nickname : `Player ${index}`,
+        })),
+      });
+    });
+    await page.reload();
+    await expect(page.locator('#recent-results li')).toHaveCount(10);
+    const query = new URL(request.url()).searchParams;
+    expect(query.get('limit')).toBe('10');
+    expect(query.get('order')).toBe('completed_at.desc,id.desc');
+    expect(query.get('select')).toBe('player_nickname,puzzle_id,completed_at');
+    expect(request.headers().apikey).toMatch(/^sb_publishable_/);
+    expect(request.headers().authorization).toBeUndefined();
+    await expect(page.locator('#recent-results li').first()).toContainText(completion.player_nickname);
+    await expect(page.locator('#recent-results img')).toHaveCount(0);
+    await expect(page.locator('#recent-results time').first()).toHaveAttribute('datetime', completion.completed_at);
+    for (const width of [320, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  });
+
+  test('requires a correct solution and a valid nickname before submitting', async ({ page }) => {
+    let posts = 0;
+    await page.route(endpoint, route => {
+      if (route.request().method() === 'POST') posts++;
+      return route.fulfill({ json: [] });
+    });
+    const form = page.locator('#result-form');
+    const save = page.getByRole('button', { name: 'Save Result', exact: true });
+    const nickname = page.getByRole('textbox', { name: 'Player nickname', exact: true });
+    await nickname.fill('Player');
+    await expect(save).toBeDisabled();
+    await form.dispatchEvent('submit');
+    await expect(page.locator('#save-status')).toContainText('Solve the puzzle correctly');
+    await fillSolution(page);
+    const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+    await cell.fill('1');
+    await expect(save).toBeDisabled();
+    await form.dispatchEvent('submit');
+    await cell.fill('');
+    await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+    await cell.press('4');
+    await expect(save).toBeDisabled();
+    await form.dispatchEvent('submit');
+    await page.getByRole('button', { name: 'Notes: On', exact: true }).click();
+    await cell.fill('4');
+    await expect(save).toBeEnabled();
+    for (const value of ['   ', 'x'.repeat(41)]) {
+      await nickname.evaluate((element, text) => { element.value = text; }, value);
+      await form.dispatchEvent('submit');
+      await expect(page.locator('#save-status')).toContainText('Enter a nickname');
+    }
+    expect(posts).toBe(0);
+  });
+
+  test('saves once despite repeated submissions and does not resave after Undo and Redo', async ({ page }) => {
+    let posts = 0;
+    let payload;
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route(endpoint, async route => {
+      if (route.request().method() === 'POST') {
+        posts++;
+        payload = route.request().postDataJSON();
+        await pending;
+        return route.fulfill({ status: 201, body: '' });
+      }
+      return route.fulfill({ json: [{ ...completion, player_nickname: 'Player' }] });
+    });
+    await fillSolution(page);
+    await page.getByRole('textbox', { name: 'Player nickname', exact: true }).fill('  Player  ');
+    const save = page.getByRole('button', { name: 'Save Result', exact: true });
+    await save.click();
+    await expect(page.locator('#save-status')).toHaveText('Saving result...');
+    await expect(save).toBeDisabled();
+    await page.locator('#result-form').dispatchEvent('submit');
+    await page.locator('#result-form').dispatchEvent('submit');
+    expect(posts).toBe(1);
+    expect(payload).toEqual({ player_nickname: 'Player', puzzle_id: 'classic-1' });
+    release();
+    await expect(page.locator('#save-status')).toContainText('Result saved!');
+    await expect(page.locator('#recent-results li')).toHaveCount(1);
+    await expect(save).toBeDisabled();
+    await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Solved!');
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.locator('#result-form').dispatchEvent('submit');
+    expect(posts).toBe(1);
+    await expect(save).toBeDisabled();
+    expect(await readBoard(page)).toEqual(Array.from(solution, (value, index) => ({
+      value, readOnly: puzzle[index] !== '0',
+    })));
+    page.once('dialog', dialog => dialog.dismiss());
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(save).toBeDisabled();
+    await page.locator('#result-form').dispatchEvent('submit');
+    expect(posts).toBe(1);
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await fillSolution(page);
+    await save.click();
+    await expect(page.locator('#save-status')).toContainText('Result saved!');
+    expect(posts).toBe(2);
+  });
+
+  test('retries a rejected save but keeps a successful save when refreshing the list fails', async ({ page }) => {
+    let posts = 0;
+    await page.route(endpoint, route => {
+      if (route.request().method() === 'POST') {
+        posts++;
+        return route.fulfill({ status: posts === 1 ? 403 : 201, body: '' });
+      }
+      return route.fulfill({ status: 503, body: '' });
+    });
+    await fillSolution(page);
+    await page.getByRole('textbox', { name: 'Player nickname', exact: true }).fill('Player');
+    const save = page.getByRole('button', { name: 'Save Result', exact: true });
+    await save.click();
+    await expect(page.locator('#save-status')).toContainText('Could not save your result');
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.locator('#save-status')).toContainText('Result saved!');
+    await expect(page.locator('#results-status')).toContainText('Could not load completions');
+    await expect(save).toBeDisabled();
+    await page.locator('#result-form').dispatchEvent('submit');
+    expect(posts).toBe(2);
+    await expect(page.getByRole('textbox', { name: 'Player nickname', exact: true })).toHaveValue('Player');
+  });
+
+  test('reports uncertain network saves without automatic retries and keeps gameplay usable', async ({ page }) => {
+    let posts = 0;
+    await page.route(endpoint, route => {
+      if (route.request().method() === 'POST') {
+        posts++;
+        return route.abort('failed');
+      }
+      return route.fulfill({ json: [] });
+    });
+    await fillSolution(page);
+    await page.getByRole('textbox', { name: 'Player nickname', exact: true }).fill('Player');
+    await page.getByRole('button', { name: 'Save Result', exact: true }).click();
+    await expect(page.locator('#save-status')).toContainText('It may have reached the server');
+    expect(posts).toBe(1);
+    await expect(page.getByRole('button', { name: 'Save Result', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save Result', exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Solved!');
+  });
+
+  test('Reset during a pending save cannot mark the new attempt as saved', async ({ page }) => {
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route(endpoint, async route => {
+      if (route.request().method() === 'POST') {
+        await pending;
+        return route.fulfill({ status: 201, body: '' });
+      }
+      return route.fulfill({ json: [] });
+    });
+    await fillSolution(page);
+    await page.getByRole('textbox', { name: 'Player nickname', exact: true }).fill('Player');
+    const save = page.getByRole('button', { name: 'Save Result', exact: true });
+    await save.click();
+    page.once('dialog', dialog => dialog.accept());
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    expect(await readBoard(page)).toEqual(originalBoard);
+    await fillSolution(page);
+    await expect(save).toBeDisabled();
+    release();
+    await expect(save).toBeEnabled();
+    await expect(page.locator('#save-status')).not.toContainText('Result saved!');
+  });
+
+  test('handles list failures, empty results, and malformed responses with a working refresh', async ({ page }) => {
+    let loads = 0;
+    await page.route(endpoint, route => {
+      loads++;
+      if (loads === 1) return route.abort('failed');
+      if (loads === 2) return route.fulfill({ json: [{ ...completion, completed_at: 'invalid' }] });
+      if (loads === 3) return route.fulfill({ json: [completion] });
+      if (loads === 4) return route.fulfill({ status: 500, body: '' });
+      return route.fulfill({ json: [] });
+    });
+    await page.reload();
+    const message = page.locator('#results-status');
+    const refresh = page.getByRole('button', { name: 'Refresh results', exact: true });
+    await expect(message).toContainText('Could not load completions');
+    await refresh.click();
+    await expect(message).toContainText('Could not load completions');
+    await refresh.click();
+    await expect(page.locator('#recent-results li')).toHaveCount(1);
+    await refresh.click();
+    await expect(message).toContainText('Could not load completions');
+    await expect(page.locator('#recent-results li')).toHaveCount(1);
+    await refresh.click();
+    await expect(message).toHaveText('No completions yet.');
+    await expect(page.locator('#recent-results li')).toHaveCount(0);
+  });
+
+  test('times out a stalled request and allows refreshing again', async ({ page }) => {
+    await page.clock.install();
+    let loads = 0;
+    await page.route(endpoint, route => {
+      loads++;
+      if (loads === 1) return;
+      return route.fulfill({ json: [] });
+    });
+    await page.getByRole('button', { name: 'Refresh results', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Refresh results', exact: true })).toBeDisabled();
+    await page.clock.fastForward(10001);
+    await expect(page.locator('#results-status')).toContainText('Could not load completions');
+    await page.getByRole('button', { name: 'Refresh results', exact: true }).click();
+    await expect(page.locator('#results-status')).toHaveText('No completions yet.');
+  });
+
+  test('a post-save refresh takes priority over an older in-flight list request', async ({ page }) => {
+    let loads = 0;
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    await page.route(endpoint, async route => {
+      if (route.request().method() === 'POST') return route.fulfill({ status: 201, body: '' });
+      loads++;
+      if (loads === 1) {
+        await pending;
+        return route.fulfill({ json: [] });
+      }
+      return route.fulfill({ json: [completion] });
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Refresh results', exact: true })).toBeDisabled();
+    await fillSolution(page);
+    await page.getByRole('textbox', { name: 'Player nickname', exact: true }).fill('Player');
+    await page.getByRole('button', { name: 'Save Result', exact: true }).click();
+    await expect(page.locator('#recent-results li')).toHaveCount(1);
+    const staleResponse = page.waitForResponse(response => response.url().includes('/rest/v1/game_results')
+      && response.request().method() === 'GET');
+    release();
+    await (await staleResponse).finished();
+    await expect(page.locator('#recent-results li')).toHaveCount(1);
+    await expect(page.locator('#results-status')).toContainText('newest first');
+  });
+});
