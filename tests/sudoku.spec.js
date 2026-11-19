@@ -73,6 +73,105 @@ test('starting numbers stay locked while blank cells are editable', async ({ pag
   await expect(blank).toHaveValue('4');
 });
 
+test('arrow keys move to adjacent cells including locked starting numbers', async ({ page }) => {
+  const cells = page.getByRole('textbox');
+  for (const [source, key, destination] of [
+    [2, 'ArrowLeft', 1],
+    [1, 'ArrowRight', 2],
+    [3, 'ArrowDown', 12],
+    [12, 'ArrowUp', 3],
+    [40, 'ArrowRight', 41],
+    [41, 'ArrowLeft', 40],
+    [0, 'ArrowDown', 9],
+    [9, 'ArrowUp', 0],
+  ]) {
+    await cells.nth(source).focus();
+    await page.keyboard.press(key);
+    await expect(cells.nth(destination)).toBeFocused();
+  }
+  expect(await readBoard(page)).toEqual(originalBoard);
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+});
+
+test('arrow keys stop at every board edge without wrapping or leaving the board', async ({ page }) => {
+  const cells = page.getByRole('textbox');
+  for (const [index, keys] of [
+    [0, ['ArrowLeft', 'ArrowUp']],
+    [8, ['ArrowRight', 'ArrowUp']],
+    [72, ['ArrowLeft', 'ArrowDown']],
+    [80, ['ArrowRight', 'ArrowDown']],
+    [27, ['ArrowLeft']],
+    [53, ['ArrowRight']],
+    [3, ['ArrowUp']],
+    [75, ['ArrowDown']],
+  ]) {
+    await cells.nth(index).focus();
+    for (const key of keys) {
+      await page.keyboard.press(key);
+      await page.keyboard.press(key);
+      await expect(cells.nth(index)).toBeFocused();
+    }
+  }
+  expect(await readBoard(page)).toEqual(originalBoard);
+});
+
+test('arrow navigation preserves notes, history, feedback, and clue locks while updating matches', async ({ page }) => {
+  const cells = page.getByRole('textbox');
+  const answer = cells.nth(2);
+  const notedCell = cells.nth(3);
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  const toggle = page.getByRole('button', { name: /^Notes:/ });
+  await answer.press('5');
+  await toggle.click();
+  await notedCell.pressSequentially('49');
+  await undo.click();
+  await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+  const feedback = await page.getByRole('status').textContent();
+  const before = await readBoard(page);
+
+  await notedCell.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(answer).toBeFocused();
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await page.keyboard.press('ArrowLeft');
+  await expect(cells.nth(1)).toBeFocused();
+  await expectHighlights(page, [1, 35, 41]);
+  await page.keyboard.press('9');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Delete');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(notedCell).toBeFocused();
+  await expectHighlights(page, []);
+  await expect(notedCell).toHaveAccessibleDescription('Pencil notes: 4');
+  expect(await readBoard(page)).toEqual(before);
+  await expect(page.getByRole('status')).toHaveText(feedback);
+  await expect(toggle).toHaveText('Notes: On');
+  await expect(undo).toBeEnabled();
+  await expect(redo).toBeEnabled();
+
+  await redo.click();
+  await expect(notedCell).toHaveAccessibleDescription('Pencil notes: 4, 9');
+  await notedCell.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(cells.nth(4)).toBeFocused();
+  await page.keyboard.press('9');
+  await expect(cells.nth(4)).toHaveValue('7');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('2');
+  await expect(cells.nth(5)).toHaveAccessibleDescription('Pencil notes: 2');
+  await undo.click();
+  await expect(cells.nth(5)).toHaveAccessibleDescription('');
+  await toggle.click();
+  await notedCell.focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('4');
+  await expect(answer).toHaveValue('4');
+  await page.keyboard.press('Backspace');
+  await expect(answer).toHaveValue('');
+});
+
 test('answer input ignores invalid digits and letters without losing notes, answers, or undo history', async ({ page }) => {
   const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
