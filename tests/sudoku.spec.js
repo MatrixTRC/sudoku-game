@@ -235,6 +235,151 @@ test('Undoing an answer restores replaced notes and Reset clears undo history', 
   await expect(undo).toBeDisabled();
 });
 
+test('Redo restores answer edits in order and leaves Undo usable', async ({ page }) => {
+  const first = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const second = page.getByRole('textbox', { name: 'Row 1, column 4', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  await expect(redo).toBeDisabled();
+  await first.pressSequentially('45');
+  await second.press('6');
+  await second.press('Backspace');
+  const edited = await readBoard(page);
+
+  for (let count = 0; count < 4; count++) await undo.click();
+  expect(await readBoard(page)).toEqual(originalBoard);
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeEnabled();
+  await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Incomplete:');
+  await first.click();
+  await redo.click();
+  await expect(first).toHaveValue('4');
+  await expect(page.getByRole('status')).toBeEmpty();
+  await redo.click();
+  await expect(first).toHaveValue('5');
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await redo.click();
+  await expect(second).toHaveValue('6');
+  await redo.click();
+  expect(await readBoard(page)).toEqual(edited);
+  await expect(redo).toBeDisabled();
+  await undo.click();
+  await expect(second).toHaveValue('6');
+  await expect(redo).toBeEnabled();
+});
+
+test('Redo restores note additions, removals, clearing, and answers that replace notes', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+  await cell.pressSequentially('494');
+  await cell.press('Delete');
+  for (let count = 0; count < 4; count++) await undo.click();
+  for (const description of ['Pencil notes: 4', 'Pencil notes: 4, 9', 'Pencil notes: 9', '']) {
+    await redo.click();
+    await expect(cell).toHaveValue('');
+    await expect(cell).toHaveAccessibleDescription(description);
+  }
+  await expect(redo).toBeDisabled();
+
+  await undo.click();
+  await page.getByRole('button', { name: 'Notes: On', exact: true }).click();
+  await cell.press('5');
+  await expect(redo).toBeDisabled();
+  await undo.click();
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 9');
+  await redo.click();
+  await expect(cell).toHaveValue('5');
+  await expect(cell).toHaveAccessibleDescription('');
+  await expect(cell.locator('..').locator('.pencil-notes')).toBeEmpty();
+  await expect(page.getByRole('button', { name: 'Notes: Off', exact: true })).toBeVisible();
+  await undo.click();
+  await undo.click();
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 4, 9');
+});
+
+test('a new pencil-note edit clears redo history but an empty deletion does not', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  await cell.press('4');
+  await undo.click();
+  await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+  await cell.press('Delete');
+  await expect(redo).toBeEnabled();
+  await cell.press('9');
+  await expect(redo).toBeDisabled();
+  await undo.click();
+  await expect(cell).toHaveAccessibleDescription('');
+  await redo.click();
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 9');
+  expect(await readBoard(page)).toEqual(originalBoard);
+});
+
+test('non-edit actions and canceling Reset preserve redo history', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  const toggle = page.getByRole('button', { name: /^Notes:/ });
+  await cell.pressSequentially('45');
+  await undo.click();
+  const clue = page.getByRole('textbox', { name: 'Row 1, column 1, starting number 5', exact: true });
+  await clue.click();
+  await clue.press('9');
+  await toggle.click();
+  await cell.press('9');
+  await cell.press('Backspace');
+  await toggle.click();
+  await cell.pressSequentially('4x0');
+  await expect(cell).toHaveValue('4');
+  await expect(redo).toBeEnabled();
+  await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+  const before = await readBoard(page);
+  const feedback = await page.getByRole('status').textContent();
+
+  const dialogPromise = page.waitForEvent('dialog');
+  const clickPromise = page.getByRole('button', { name: 'Reset', exact: true }).click();
+  const dialog = await dialogPromise;
+  await dialog.dismiss();
+  await clickPromise;
+  expect(await readBoard(page)).toEqual(before);
+  await expect(page.getByRole('status')).toHaveText(feedback);
+  await expect(undo).toBeEnabled();
+  await expect(redo).toBeEnabled();
+  await redo.click();
+  await expect(cell).toHaveValue('5');
+  await expect(redo).toBeDisabled();
+});
+
+test('confirmed Reset clears undo and redo history without affecting later edits', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const redo = page.getByRole('button', { name: 'Redo', exact: true });
+  await cell.pressSequentially('45');
+  await undo.click();
+  await expect(undo).toBeEnabled();
+  await expect(redo).toBeEnabled();
+  const dialogPromise = page.waitForEvent('dialog');
+  const clickPromise = page.getByRole('button', { name: 'Reset', exact: true }).click();
+  const dialog = await dialogPromise;
+  await dialog.accept();
+  await clickPromise;
+  expect(await readBoard(page)).toEqual(originalBoard);
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+  await cell.press('6');
+  await undo.click();
+  await expect(cell).toHaveValue('');
+  await expect(undo).toBeDisabled();
+  await redo.click();
+  await expect(cell).toHaveValue('6');
+  await expect(redo).toBeDisabled();
+});
+
 test('confirming Reset clears entries and feedback but preserves locked clues', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Row 1, column 3', exact: true }).fill('4');
   await page.getByRole('textbox', { name: 'Row 1, column 4', exact: true }).fill('6');

@@ -22,10 +22,14 @@ server, or internet connection is needed.
   restoring notes replaced by an answer. It is disabled when there is nothing
   to undo; selecting cells, changing modes, and checking the solution do not
   affect undo history.
+- **Redo** restores the latest change reversed by Undo, including answers and
+  pencil notes. It is disabled when there is nothing to redo. A new answer or
+  note change clears redo history; invalid input and other no-op actions do not.
 - **Check Solution** reports **incomplete** if any cell is empty, even if other
   entries are wrong. A full board is reported as **incorrect** or **solved**.
 - **Reset** asks for confirmation before clearing your entries, notes, and
-  feedback, restoring the fixed puzzle. Cancel keeps them unchanged.
+  feedback and both history stacks, restoring the fixed puzzle. Cancel keeps
+  them unchanged.
 
 Each row, column, and 3-by-3 box must contain the digits 1-9 without repeats.
 
@@ -46,7 +50,7 @@ command. Browser installation is needed on initial setup and after Playwright
 updates that change its browser version.
 
 The Playwright suite opens the HTML file directly in Chromium, without a server.
-It covers locked starting numbers, answer and pencil-note undo, matching-number
+It covers locked starting numbers, answer and pencil-note undo/redo, matching-number
 highlights, confirming and canceling Reset, and incomplete (including partially
 incorrect boards), incorrect, and solved results.
 

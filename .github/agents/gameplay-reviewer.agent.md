@@ -29,12 +29,14 @@ explain how they affect players, and report them without making changes.
     replace notes; notes never count as answers or matching-number occurrences.
   - Undo restores the previous answer and notes, including notes replaced by an
     answer. No-op edits and non-edit actions do not consume undo history.
-  - Selection, answer changes, clearing, and Undo keep matching highlights and
+  - Redo restores changes reversed by Undo. New edits clear redo history;
+    invalid input, no-op actions, and canceled Reset preserve it.
+  - Selection, answer changes, clearing, Undo, and Redo keep matching highlights and
     solution feedback consistent with the board.
   - Solution checking reports incomplete before checking mistakes, and correctly
     distinguishes full incorrect boards from solved boards.
-  - Confirmed Reset restores the puzzle and clears entries, notes, undo history,
-    highlights, and feedback. Canceling Reset preserves the previous state.
+  - Confirmed Reset restores the puzzle and clears entries, notes, undo/redo
+    history, highlights, and feedback. Canceling Reset preserves the previous state.
 - Report only bugs supported by a concrete code path or reproduction. Keep
   uncertain concerns and test gaps separate from confirmed findings.
 - Ignore cosmetic preferences, unrelated refactors, and missing tests by
