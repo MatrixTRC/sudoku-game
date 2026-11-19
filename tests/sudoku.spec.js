@@ -73,6 +73,80 @@ test('starting numbers stay locked while blank cells are editable', async ({ pag
   await expect(blank).toHaveValue('4');
 });
 
+test('answer input ignores invalid digits and letters without losing notes, answers, or undo history', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const check = page.getByRole('button', { name: 'Check Solution', exact: true });
+  await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+  await cell.pressSequentially('49');
+  await page.getByRole('button', { name: 'Notes: On', exact: true }).click();
+  await check.click();
+  const feedback = await page.getByRole('status').textContent();
+
+  await cell.pressSequentially('x0');
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 4, 9');
+  await expect(cell.locator('..').locator('.pencil-notes')).toHaveText('49');
+  await expect(page.getByRole('status')).toHaveText(feedback);
+  await undo.click();
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 4');
+
+  await cell.press('5');
+  await check.click();
+  await cell.press('ControlOrMeta+A');
+  await cell.pressSequentially('x0');
+  await expect(cell).toHaveValue('5');
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await expect(page.getByRole('status')).toHaveText(feedback);
+  await undo.click();
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 4');
+});
+
+test('answer input replaces filled cells at either caret position and records one undo per change', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  await cell.press('4');
+  await page.getByRole('button', { name: 'Check Solution', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Incomplete:');
+  await cell.press('5');
+  await expect(cell).toHaveValue('5');
+  await expectHighlights(page, [0, 2, 14, 71]);
+  await expect(page.getByRole('status')).toBeEmpty();
+  await cell.press('5');
+  await cell.press('Home');
+  await cell.press('3');
+  await expect(cell).toHaveValue('3');
+  await expectHighlights(page, [1, 2, 35, 41]);
+
+  await undo.click();
+  await expect(cell).toHaveValue('5');
+  await undo.click();
+  await expect(cell).toHaveValue('4');
+  await undo.click();
+  await expect(cell).toHaveValue('');
+  await expect(undo).toBeDisabled();
+});
+
+test('answer input replaces filled cells for text insertion without keydown events', async ({ page }) => {
+  const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  await page.getByRole('button', { name: 'Notes: Off', exact: true }).click();
+  await cell.pressSequentially('49');
+  await page.getByRole('button', { name: 'Notes: On', exact: true }).click();
+  await cell.focus();
+  await page.keyboard.insertText('5');
+  await expect(cell).toHaveValue('5');
+  await expect(cell).toHaveAccessibleDescription('');
+  await page.keyboard.insertText('6');
+  await expect(cell).toHaveValue('6');
+  await undo.click();
+  await expect(cell).toHaveValue('5');
+  await undo.click();
+  await expect(cell).toHaveValue('');
+  await expect(cell).toHaveAccessibleDescription('Pencil notes: 4, 9');
+});
+
 test('Undo restores entered, replaced, and cleared answers without being consumed by other actions', async ({ page }) => {
   const undo = page.getByRole('button', { name: 'Undo', exact: true });
   const cell = page.getByRole('textbox', { name: 'Row 1, column 3', exact: true });

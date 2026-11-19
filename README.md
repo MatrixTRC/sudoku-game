@@ -7,6 +7,8 @@ Open [index.html](./index.html) directly in your browser. No installation,
 server, or internet connection is needed.
 
 - Fill white cells with digits 1-9. Shaded starting numbers are locked.
+- Type another valid digit to replace an answer without clearing it first.
+  Invalid characters are ignored without changing existing answers or notes.
 - Use Tab to move between editable cells and Backspace or Delete to clear a cell.
 - Select an answer or starting number to highlight every occurrence of that
   number. Select an empty or notes-only cell to clear highlights; pencil notes

@@ -295,7 +295,7 @@
         <ul class="guide-list">
           <li>
             <h3>Make your move</h3>
-            <p>Select a white cell and type a number. Shaded starting numbers stay locked.</p>
+            <p>Select a white cell and type a number. Type another digit to replace an answer. Shaded starting numbers stay locked.</p>
           </li>
           <li>
             <h3>Think in pencil</h3>
@@ -449,11 +449,24 @@
       }
     });
 
+    board.addEventListener("beforeinput", (event) => {
+      const cell = event.target;
+      if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
+      if (!notesMode && event.inputType.startsWith("insert")) {
+        // Select before maxlength is enforced so typing replaces the answer.
+        cell.select();
+      }
+    });
+
     board.addEventListener("input", (event) => {
       const cell = event.target;
       if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
       const index = Number(cell.dataset.index);
       const digit = cell.value.replace(/[^1-9]/g, "").slice(0, 1);
+      if (cell.value !== "" && digit === "") {
+        cell.value = answers[index];
+        return;
+      }
       const previousAnswer = answers[index];
       const previousNotes = new Set(notes[index]);
       if (notesMode) {
