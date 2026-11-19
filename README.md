@@ -9,7 +9,9 @@ server, or internet connection is needed.
 - Fill white cells with digits 1-9. Shaded starting numbers are locked.
 - Type another valid digit to replace an answer without clearing it first.
   Invalid characters are ignored without changing existing answers or notes.
-- Use Tab to move between editable cells and Backspace or Delete to clear a cell.
+- Use arrow keys to move to adjacent cells, including locked starting numbers.
+  Navigation stops at the board edges without wrapping.
+  Use Tab to move between editable cells and Backspace or Delete to clear a cell.
 - Select an answer or starting number to highlight every occurrence of that
   number. Select an empty or notes-only cell to clear highlights; pencil notes
   are not included in matches.
@@ -50,7 +52,8 @@ command. Browser installation is needed on initial setup and after Playwright
 updates that change its browser version.
 
 The Playwright suite opens the HTML file directly in Chromium, without a server.
-It covers locked starting numbers, answer and pencil-note undo/redo, matching-number
+It covers arrow-key navigation and board edges, locked starting numbers,
+answer and pencil-note undo/redo, matching-number
 highlights, confirming and canceling Reset, and incomplete (including partially
 incorrect boards), incorrect, and solved results.
 

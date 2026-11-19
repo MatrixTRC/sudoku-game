@@ -312,7 +312,7 @@
             <p>Undo reverses the latest answer or note change; Redo restores it. A new edit clears Redo. Reset asks before clearing your entries, notes, and history.</p>
           </li>
         </ul>
-        <p class="keyboard-tip">Use <kbd>Tab</kbd> to move between editable cells, and <kbd>Backspace</kbd> or <kbd>Delete</kbd> to clear a cell.</p>
+        <p class="keyboard-tip">Use the arrow keys to move between adjacent cells, stopping at the board edges. Use <kbd>Tab</kbd> to move between editable cells, and <kbd>Backspace</kbd> or <kbd>Delete</kbd> to clear a cell.</p>
       </aside>
     </div>
     <noscript><p>Enable JavaScript to play this Sudoku game.</p></noscript>
@@ -450,8 +450,24 @@
 
     board.addEventListener("keydown", (event) => {
       const cell = event.target;
-      if (!(cell instanceof HTMLInputElement) || cell.readOnly) return;
+      if (!(cell instanceof HTMLInputElement)) return;
       const index = Number(cell.dataset.index);
+      const direction = {
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0]
+      }[event.key];
+      if (direction) {
+        event.preventDefault();
+        const row = Math.floor(index / 9) + direction[0];
+        const column = index % 9 + direction[1];
+        if (row >= 0 && row < 9 && column >= 0 && column < 9) {
+          cells[row * 9 + column].focus();
+        }
+        return;
+      }
+      if (cell.readOnly) return;
       if (notesMode && answers[index] === "" &&
           (event.key === "Backspace" || event.key === "Delete")) {
         event.preventDefault();
