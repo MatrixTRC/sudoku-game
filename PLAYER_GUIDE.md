@@ -15,6 +15,15 @@ the digits 1-9 without repeats.
 - With **Notes: Off**, type another valid digit to replace an answer.
   Press **Backspace** or **Delete** to clear an answer.
 - Invalid characters, including 0, leave existing answers and notes unchanged.
+
+## Move between cells
+
+- Select a cell and use the **arrow keys** to move one cell left, right, up,
+  or down, including onto locked starting numbers.
+- Navigation stops at each board edge: pressing an arrow toward the outside
+  keeps you in the same cell without wrapping to another row or column.
+- Starting numbers remain locked when reached with arrow keys. You can move
+  away from them with the same keys.
 - Use **Tab** to move forward through editable cells and the controls, or
   **Shift+Tab** to move backward. Starting numbers are skipped in the tab order,
   but you can click or tap them to highlight matching numbers.
